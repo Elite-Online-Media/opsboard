@@ -105,8 +105,8 @@ function App(){
       const next=COLS[COLS.indexOf(t.col)+dir];
       if(!next)return t;
       const ts={...t};
-      if(next==="En proceso") ts.startedAt=nowISO();
-      if(next==="Completado") ts.completedAt=nowISO();
+      if(next==="En proceso"){ts.startedAt=nowISO();ts.startedBy=user.name;}
+      if(next==="Completado"){ts.completedAt=nowISO();ts.completedBy=user.name;}
       return{...ts,col:next};
     });
     const moved=updated.find(t=>t.id===id);
@@ -237,8 +237,7 @@ function Topbar({user,view,setView,onLogout,isManager}){
         {navs.map(n=><button key={n.id} onClick={()=>setView(n.id)} style={{padding:"5px 14px",borderRadius:8,border:view===n.id?"1.5px solid #7F77DD":"1px solid #d0d0cc",background:view===n.id?"#EEEDFE":"transparent",color:view===n.id?"#3C3489":"#555",fontSize:13,fontWeight:view===n.id?500:400,cursor:"pointer"}}>{n.label}</button>)}
       </div>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <span style={{fontSize:12,color:"#666"}}>{user.name}</span>
-        <span style={badge(rc.bg,rc.color)}>{ROLE_LABELS[user.role]}</span>
+        <span style={badge(rc.bg,rc.color)}>{ROLE_LABELS[user.role]||user.name}</span>
         <button onClick={onLogout} style={{...btn("transparent","#666","1px solid #d0d0cc"),padding:"4px 12px",fontSize:12}}>Salir</button>
       </div>
     </div>
@@ -310,8 +309,8 @@ function TaskCard({task,canMove,colIdx,onDetail,onMove}){
       </div>
       {task.notes&&<div style={{fontSize:12,color:"#666",marginBottom:4,lineHeight:1.4}}>{task.notes}</div>}
       {task.due&&<div style={{fontSize:11,color:"#999",marginBottom:2}}>Vence: {fmtDate(task.due)}</div>}
-      {task.startedAt&&<div style={{fontSize:11,color:"#EF9F27",marginBottom:2}}>Inicio: {fmtDT(task.startedAt)}</div>}
-      {task.completedAt&&<div style={{fontSize:11,color:"#639922",marginBottom:2}}>Completado: {fmtDT(task.completedAt)}</div>}
+      {task.startedAt&&<div style={{fontSize:11,color:"#EF9F27",marginBottom:2}}>Inicio: {fmtDT(task.startedAt)} · {task.startedBy||""}</div>}
+      {task.completedAt&&<div style={{fontSize:11,color:"#639922",marginBottom:2}}>Completado: {fmtDT(task.completedAt)} · {task.completedBy||""}</div>}
       <div style={{fontSize:11,color:"#bbb"}}>Por: {task.requestedBy}</div>
       {canMove&&(
         <div style={{display:"flex",gap:4,marginTop:8}} onClick={e=>e.stopPropagation()}>
