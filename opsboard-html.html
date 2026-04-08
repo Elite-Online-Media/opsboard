@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OpsBoard — Área Creativa</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f3;color:#1a1a1a;font-size:14px}
+input,select,textarea{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid #d0d0cc;border-radius:8px;outline:none;background:#fff;color:#1a1a1a;width:100%}
+input:focus,select:focus,textarea:focus{border-color:#7F77DD;box-shadow:0 0 0 3px rgba(127,119,221,.15)}
+button{font-family:inherit;cursor:pointer}
+a{text-decoration:none}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#ccc;border-radius:99px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+
+const DEPTS=["Desarrollo web","Diseño gráfico","Video","Contenido","Redes sociales"];
+const CATS=["Website","Cambio web","Video","Cambio video","Papelería corporativa","Ítems físico","Cambio papelería corporativa","Cambio ítems físico"];
+const PRIOS=["Urgente","Normal","Baja"];
+const COLS=["Asignado","En proceso","Completado"];
+
+const DEPT_COLORS={"Desarrollo web":{bg:"#E6F1FB",color:"#0C447C"},"Diseño gráfico":{bg:"#FBEAF0",color:"#72243E"},"Video":{bg:"#FAECE7",color:"#712B13"},"Contenido":{bg:"#EAF3DE",color:"#27500A"},"Redes sociales":{bg:"#EEEDFE",color:"#3C3489"}};
+const PRIO_COLORS={"Urgente":{bg:"#FCEBEB",color:"#A32D2D"},"Normal":{bg:"#E6F1FB",color:"#0C447C"},"Baja":{bg:"#F1EFE8",color:"#444441"}};
+const COL_COLORS={"Asignado":{bg:"#EEEDFE",color:"#3C3489",dot:"#7F77DD"},"En proceso":{bg:"#FAEEDA",color:"#633806",dot:"#EF9F27"},"Completado":{bg:"#EAF3DE",color:"#27500A",dot:"#639922"}};
+const ROLE_COLORS={manager:{bg:"#EEEDFE",color:"#3C3489"},sales:{bg:"#EAF3DE",color:"#27500A"},onboarding:{bg:"#FAEEDA",color:"#633806"}};
+const ROLE_LABELS={manager:"Manager",sales:"Venta",onboarding:"Onboarding"};
+
+const USERS=[
+  {id:"mgr",name:"Manager",role:"manager",pass:"manager123"},
+  {id:"venta",name:"Venta",role:"sales",pass:"venta123"},
+  {id:"onb",name:"Onboarding",role:"onboarding",pass:"onboarding123"},
+];
+
+const fmtDate=d=>new Date(d).toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});
+const fmtDT=d=>new Date(d).toLocaleString("es-MX",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
+const nowISO=()=>new Date().toISOString();
+const uid=()=>Math.random().toString(36).slice(2,10);
+const isURL=v=>{try{new URL(v);return true;}catch{return false;}};
+const shortLink=url=>{try{const u=new URL(url);return u.hostname.replace("www.","")+u.pathname.slice(0,26)+(u.pathname.length>26?"…":"");}catch{return url.slice(0,38);}};
+
+const SAMPLE_TASKS=[
+  {id:uid(),taskLink:"https://app.teamwork.com/tasks/001",dept:"Desarrollo web",cat:"Website",prio:"Urgente",col:"Asignado",due:"2026-04-10",requestedBy:"Venta",createdAt:new Date(Date.now()-3*86400000).toISOString(),notes:"Landing page campaña verano"},
+  {id:uid(),taskLink:"https://app.teamwork.com/tasks/002",dept:"Diseño gráfico",cat:"Papelería corporativa",prio:"Normal",col:"En proceso",due:"2026-04-15",requestedBy:"Onboarding",createdAt:new Date(Date.now()-2*86400000).toISOString(),notes:"Nuevo cliente — kit bienvenida"},
+  {id:uid(),taskLink:"https://app.teamwork.com/tasks/003",dept:"Video",cat:"Video",prio:"Normal",col:"Completado",due:"2026-04-07",requestedBy:"Venta",createdAt:new Date(Date.now()-7*86400000).toISOString(),notes:"Video testimonial cliente X"},
+];
+const SAMPLE_LOG=[
+  {id:uid(),ts:new Date(Date.now()-7*86400000).toISOString(),user:"Manager",action:"creó",taskLink:"https://app.teamwork.com/tasks/003",cat:"Video"},
+  {id:uid(),ts:new Date(Date.now()-3*86400000).toISOString(),user:"Manager",action:"creó",taskLink:"https://app.teamwork.com/tasks/001",cat:"Website"},
+  {id:uid(),ts:new Date(Date.now()-2*86400000).toISOString(),user:"Manager",action:"creó",taskLink:"https://app.teamwork.com/tasks/002",cat:"Papelería corporativa"},
+];
+
+// ─── styles helpers ───────────────────────────────────────────────
+const card={background:"#fff",border:"1px solid #e0e0dc",borderRadius:10,padding:"14px 16px"};
+const badge=(bg,color,extra={})=>({fontSize:11,padding:"3px 9px",borderRadius:99,background:bg,color,fontWeight:500,...extra});
+const btn=(bg,color,border="none",extra={})=>({padding:"8px 16px",borderRadius:8,background:bg,color,border,fontSize:13,cursor:"pointer",fontWeight:500,...extra});
+
+function App(){
+  const [user,setUser]=useState(null);
+  const [tasks,setTasks]=useState(SAMPLE_TASKS);
+  const [log,setLog]=useState(SAMPLE_LOG);
+  const [view,setView]=useState("board");
+  const [fDept,setFDept]=useState("Todos");
+  const [fPrio,setFPrio]=useState("Todos");
+  const [fCol,setFCol]=useState("Todos");
+  const [showForm,setShowForm]=useState(false);
+  const [editTask,setEditTask]=useState(null);
+  const [detail,setDetail]=useState(null);
+  const [reportRange,setReportRange]=useState(7);
+  const [toast,setToast]=useState(null);
+  const loaded=useRef(false);
+
+  useEffect(()=>{
+    if(loaded.current)return;
+    loaded.current=true;
+    try{
+      const t=localStorage.getItem("ops_tasks_v2");
+      const l=localStorage.getItem("ops_log_v2");
+      if(t)setTasks(JSON.parse(t));
+      if(l)setLog(JSON.parse(l));
+    }catch{}
+  },[]);
+
+  useEffect(()=>{
+    if(!loaded.current)return;
+    try{
+      localStorage.setItem("ops_tasks_v2",JSON.stringify(tasks));
+      localStorage.setItem("ops_log_v2",JSON.stringify(log));
+    }catch{}
+  },[tasks,log]);
+
+  const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
+  const addLog=(action,taskLink,cat)=>setLog(prev=>[{id:uid(),ts:nowISO(),user:user?.name||"Sistema",action,taskLink,cat},...prev]);
+
+  const moveTask=(id,dir)=>{
+    setTasks(prev=>prev.map(t=>{
+      if(t.id!==id)return t;
+      const next=COLS[COLS.indexOf(t.col)+dir];
+      if(!next)return t;
+      addLog(`movió a ${next}`,t.taskLink,t.cat);
+      return{...t,col:next};
+    }));
+    showToast("Tarea actualizada");
+  };
+
+  const saveTask=(data)=>{
+    if(editTask){
+      setTasks(prev=>prev.map(t=>t.id===editTask.id?{...t,...data}:t));
+      addLog("editó",data.taskLink,data.cat);
+      showToast("Tarea actualizada");
+    }else{
+      const nt={id:uid(),createdAt:nowISO(),col:"Asignado",requestedBy:user.name,...data};
+      setTasks(prev=>[nt,...prev]);
+      addLog("creó",data.taskLink,data.cat);
+      showToast("Tarea creada");
+    }
+    setShowForm(false);setEditTask(null);
+  };
+
+  const deleteTask=(id)=>{
+    const t=tasks.find(x=>x.id===id);
+    setTasks(prev=>prev.filter(x=>x.id!==id));
+    addLog("eliminó",t?.taskLink||"",t?.cat||"");
+    setDetail(null);
+    showToast("Tarea eliminada","warn");
+  };
+
+  const filtered=tasks.filter(t=>{
+    if(fDept!=="Todos"&&t.dept!==fDept)return false;
+    if(fPrio!=="Todos"&&t.prio!==fPrio)return false;
+    if(fCol!=="Todos"&&t.col!==fCol)return false;
+    return true;
+  });
+
+  const reportTasks=tasks.filter(t=>(Date.now()-new Date(t.createdAt).getTime())<=reportRange*86400000);
+  const logFiltered=log.filter(l=>(Date.now()-new Date(l.ts).getTime())<=reportRange*86400000);
+
+  const downloadCSV=()=>{
+    const rows=[["Link Teamwork","Departamento","Categoría","Prioridad","Estado","Solicitado por","Creación","Vencimiento","Notas"]];
+    reportTasks.forEach(t=>rows.push([t.taskLink,t.dept,t.cat,t.prio,t.col,t.requestedBy,fmtDate(t.createdAt),t.due||"—",t.notes||""]));
+    const csv=rows.map(r=>r.map(c=>`"${c}"`).join(",")).join("\n");
+    const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,\uFEFF"+encodeURIComponent(csv);
+    a.download=`OpsBoard_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  };
+
+  const downloadPDF=()=>{
+    const w=window.open("","_blank");
+    const tRows=reportTasks.map(t=>`<tr><td><a href="${t.taskLink}" style="color:#7F77DD">${shortLink(t.taskLink)}</a></td><td>${t.dept}</td><td>${t.cat}</td><td>${t.prio}</td><td style="color:${t.col==='Completado'?'#27500A':t.col==='En proceso'?'#633806':'#3C3489'}">${t.col}</td><td>${t.requestedBy}</td><td>${t.due||"—"}</td></tr>`).join("");
+    const lRows=logFiltered.slice(0,30).map(l=>`<tr><td>${fmtDT(l.ts)}</td><td>${l.user}</td><td>${l.action}</td><td>${l.cat}</td><td><a href="${l.taskLink}" style="color:#7F77DD">${shortLink(l.taskLink)}</a></td></tr>`).join("");
+    const byCol=COLS.map(c=>({col:c,n:reportTasks.filter(t=>t.col===c).length}));
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpsBoard Reporte</title><style>body{font-family:Arial,sans-serif;padding:2rem;color:#222}h1{color:#7F77DD}h2{margin-top:2rem;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:.5rem}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f5f5f5;padding:7px;text-align:left;font-size:11px}td{padding:6px 7px;border-bottom:1px solid #eee}.stats{display:flex;gap:1rem;margin:1rem 0}.s{background:#f9f9f9;padding:.75rem 1.25rem;border-radius:8px;text-align:center}.sn{font-size:22px;font-weight:700;color:#7F77DD}.sl{font-size:11px;color:#888}</style></head><body>
+    <h1>OpsBoard — Reporte ejecutivo</h1>
+    <p style="color:#888;font-size:13px">Período: últimos ${reportRange} días · ${fmtDate(nowISO())}</p>
+    <div class="stats">${byCol.map(c=>`<div class="s"><div class="sn">${c.n}</div><div class="sl">${c.col}</div></div>`).join("")}<div class="s"><div class="sn">${reportTasks.filter(t=>t.prio==="Urgente").length}</div><div class="sl">Urgentes</div></div></div>
+    <h2>Tareas</h2><table><tr><th>Link</th><th>Departamento</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><th>Por</th><th>Vence</th></tr>${tRows}</table>
+    <h2>Log de actividad</h2><table><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Categoría</th><th>Link</th></tr>${lRows}</table>
+    <p style="margin-top:3rem;font-size:11px;color:#bbb;border-top:1px solid #eee;padding-top:1rem">OpsBoard · Área Creativa · ${new Date().getFullYear()}</p>
+    </body></html>`);
+    w.document.close();setTimeout(()=>w.print(),500);
+  };
+
+  if(!user)return<Login onLogin={u=>{setUser(u);}} />;
+  const isManager=user.role==="manager";
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f5f5f3"}}>
+      {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:9999,padding:"10px 18px",borderRadius:8,background:toast.type==="warn"?"#FCEBEB":"#EAF3DE",color:toast.type==="warn"?"#A32D2D":"#27500A",fontSize:13,fontWeight:500,border:`1px solid ${toast.type==="warn"?"#F09595":"#97C459"}`,boxShadow:"0 4px 12px rgba(0,0,0,.12)"}}>{toast.msg}</div>}
+      <Topbar user={user} view={view} setView={setView} onLogout={()=>{setUser(null);setView("board");}} isManager={isManager}/>
+      <div style={{padding:"1rem",maxWidth:1200,margin:"0 auto"}}>
+        {view==="board"&&<BoardView tasks={filtered} allTasks={tasks} isManager={isManager} fDept={fDept} setFDept={setFDept} fPrio={fPrio} setFPrio={setFPrio} fCol={fCol} setFCol={setFCol} onNew={()=>{setEditTask(null);setShowForm(true);}} onMove={moveTask} onDetail={setDetail}/>}
+        {view==="log"&&<LogView log={log}/>}
+        {view==="report"&&<ReportView reportRange={reportRange} setReportRange={setReportRange} reportTasks={reportTasks} logFiltered={logFiltered} onCSV={downloadCSV} onPDF={downloadPDF}/>}
+        {view==="urgent"&&!isManager&&<UrgentView onSubmit={d=>{saveTask({...d,prio:"Urgente"});setView("board");}} />}
+      </div>
+      {showForm&&isManager&&<TaskModal onSave={saveTask} onClose={()=>{setShowForm(false);setEditTask(null);}} initial={editTask}/>}
+      {detail&&<DetailModal task={detail} onClose={()=>setDetail(null)} onMove={moveTask} isManager={isManager} onEdit={t=>{setEditTask(t);setDetail(null);setShowForm(true);}} onDelete={deleteTask}/>}
+    </div>
+  );
+}
+
+function Login({onLogin}){
+  const [u,setU]=useState("");const [p,setP]=useState("");const [err,setErr]=useState("");
+  const go=()=>{const found=USERS.find(x=>x.name===u&&x.pass===p);if(found)onLogin(found);else setErr("Usuario o contraseña incorrectos.");};
+  return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f5f5f3"}}>
+      <div style={{...card,width:340,maxWidth:"92vw",padding:"2.5rem 2rem"}}>
+        <div style={{textAlign:"center",marginBottom:"2rem"}}>
+          <div style={{fontSize:24,fontWeight:600}}>Ops<span style={{color:"#7F77DD"}}>Board</span></div>
+          <div style={{fontSize:13,color:"#888",marginTop:4}}>Área Creativa</div>
+        </div>
+        <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Usuario</label>
+        <select value={u} onChange={e=>setU(e.target.value)} style={{marginBottom:12}}>
+          <option value="">Selecciona tu usuario</option>
+          {USERS.map(x=><option key={x.id} value={x.name}>{x.name}</option>)}
+        </select>
+        <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Contraseña</label>
+        <input type="password" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="Contraseña" style={{marginBottom:12}}/>
+        {err&&<div style={{fontSize:12,color:"#A32D2D",background:"#FCEBEB",padding:"7px 10px",borderRadius:7,marginBottom:12}}>{err}</div>}
+        <button onClick={go} style={{...btn("#7F77DD","#fff"),width:"100%",padding:"10px",fontSize:14}}>Ingresar</button>
+        <div style={{marginTop:"1.5rem",fontSize:11,color:"#aaa",borderTop:"1px solid #eee",paddingTop:"1rem",lineHeight:1.8}}>
+          <b>Demo:</b> Manager → manager123<br/>Venta → venta123 · Onboarding → onboarding123
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Topbar({user,view,setView,onLogout,isManager}){
+  const navs=isManager
+    ?[{id:"board",label:"Tablero"},{id:"log",label:"Log"},{id:"report",label:"Reportes"}]
+    :[{id:"board",label:"Tablero"},{id:"urgent",label:"Solicitud urgente"},{id:"report",label:"Reportes"}];
+  const rc=ROLE_COLORS[user.role];
+  return(
+    <div style={{background:"#fff",borderBottom:"1px solid #e0e0dc",padding:".65rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,position:"sticky",top:0,zIndex:100}}>
+      <div style={{fontSize:16,fontWeight:600}}>Ops<span style={{color:"#7F77DD"}}>Board</span></div>
+      <div style={{display:"flex",gap:4}}>
+        {navs.map(n=><button key={n.id} onClick={()=>setView(n.id)} style={{padding:"5px 14px",borderRadius:8,border:view===n.id?"1.5px solid #7F77DD":"1px solid #d0d0cc",background:view===n.id?"#EEEDFE":"transparent",color:view===n.id?"#3C3489":"#555",fontSize:13,fontWeight:view===n.id?500:400,cursor:"pointer"}}>{n.label}</button>)}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:12,color:"#666"}}>{user.name}</span>
+        <span style={badge(rc.bg,rc.color)}>{ROLE_LABELS[user.role]}</span>
+        <button onClick={onLogout} style={{...btn("transparent","#666","1px solid #d0d0cc"),padding:"4px 12px",fontSize:12}}>Salir</button>
+      </div>
+    </div>
+  );
+}
+
+function BoardView({tasks,allTasks,isManager,fDept,setFDept,fPrio,setFPrio,fCol,setFCol,onNew,onMove,onDetail}){
+  const counts={Asignado:allTasks.filter(t=>t.col==="Asignado").length,"En proceso":allTasks.filter(t=>t.col==="En proceso").length,Completado:allTasks.filter(t=>t.col==="Completado").length,Urgentes:allTasks.filter(t=>t.prio==="Urgente").length};
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
+        {Object.entries(counts).map(([k,v])=>(
+          <div key={k} style={{...card,textAlign:"center",padding:".75rem"}}>
+            <div style={{fontSize:24,fontWeight:600,color:k==="Urgentes"?"#A32D2D":COL_COLORS[k]?.dot||"#333"}}>{v}</div>
+            <div style={{fontSize:11,color:"#888",marginTop:2}}>{k}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
+        <Sel label="Área" value={fDept} onChange={setFDept} opts={["Todos",...DEPTS]}/>
+        <Sel label="Prioridad" value={fPrio} onChange={setFPrio} opts={["Todos",...PRIOS]}/>
+        <Sel label="Estado" value={fCol} onChange={setFCol} opts={["Todos",...COLS]}/>
+        {isManager&&<button onClick={onNew} style={{...btn("#7F77DD","#fff"),marginLeft:"auto"}}>+ Nueva tarea</button>}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+        {COLS.map(col=>(
+          <div key={col} style={{background:"#ebebea",borderRadius:12,border:"1px solid #e0e0dc",overflow:"hidden"}}>
+            <div style={{padding:".75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid #e0e0dc",background:"#f0f0ee"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,fontWeight:500}}>
+                <span style={{width:9,height:9,borderRadius:"50%",background:COL_COLORS[col].dot,display:"inline-block"}}></span>{col}
+              </div>
+              <span style={badge(COL_COLORS[col].bg,COL_COLORS[col].color)}>{tasks.filter(t=>t.col===col).length}</span>
+            </div>
+            <div style={{padding:8,display:"flex",flexDirection:"column",gap:8,minHeight:120}}>
+              {tasks.filter(t=>t.col===col).map(t=><TaskCard key={t.id} task={t} onMove={isManager?onMove:null} colIdx={COLS.indexOf(col)} onDetail={()=>onDetail(t)}/>)}
+              {tasks.filter(t=>t.col===col).length===0&&<div style={{textAlign:"center",color:"#aaa",fontSize:12,padding:"1.5rem 0"}}>Sin tareas</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Sel({label,value,onChange,opts}){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <span style={{fontSize:12,color:"#666",whiteSpace:"nowrap"}}>{label}</span>
+      <select value={value} onChange={e=>onChange(e.target.value)} style={{width:"auto",fontSize:12,padding:"5px 8px"}}>
+        {opts.map(o=><option key={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function TaskCard({task,onMove,colIdx,onDetail}){
+  const isUrgent=task.prio==="Urgente";
+  return(
+    <div onClick={onDetail} style={{background:"#fff",border:"1px solid #e0e0dc",borderLeft:isUrgent?"3px solid #E24B4A":"1px solid #e0e0dc",borderRadius:9,padding:"10px 12px",cursor:"pointer",transition:"box-shadow .15s"}}
+      onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,.08)"}
+      onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:6}}>
+        <a href={task.taskLink} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{fontSize:12,color:"#7F77DD",wordBreak:"break-all",lineHeight:1.4,flex:1}}>{shortLink(task.taskLink)}</a>
+        <span style={badge(PRIO_COLORS[task.prio].bg,PRIO_COLORS[task.prio].color,{fontSize:10,flexShrink:0})}>{task.prio}</span>
+      </div>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+        <span style={badge(DEPT_COLORS[task.dept].bg,DEPT_COLORS[task.dept].color,{fontSize:11})}>{task.dept}</span>
+        <span style={badge("#f0f0ee","#555",{fontSize:11})}>{task.cat}</span>
+      </div>
+      {task.notes&&<div style={{fontSize:12,color:"#666",marginBottom:4,lineHeight:1.4}}>{task.notes}</div>}
+      {task.due&&<div style={{fontSize:11,color:"#999",marginBottom:2}}>Vence: {fmtDate(task.due)}</div>}
+      <div style={{fontSize:11,color:"#bbb"}}>Por: {task.requestedBy}</div>
+      {onMove&&(
+        <div style={{display:"flex",gap:4,marginTop:8}} onClick={e=>e.stopPropagation()}>
+          {colIdx>0&&<button onClick={()=>onMove(task.id,-1)} style={{...btn("transparent","#555","1px solid #d0d0cc"),padding:"3px 8px",fontSize:11}}>← Atrás</button>}
+          {colIdx<2&&<button onClick={()=>onMove(task.id,1)} style={{...btn(colIdx===1?"#639922":"#7F77DD","#fff"),padding:"3px 10px",fontSize:11}}>{colIdx===1?"Completar ✓":"En proceso →"}</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskModal({onSave,onClose,initial}){
+  const [form,setForm]=useState({taskLink:"",dept:DEPTS[0],cat:CATS[0],prio:"Normal",due:"",notes:"",...(initial||{})});
+  const [linkErr,setLinkErr]=useState("");
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const handleSave=()=>{
+    if(!form.taskLink.trim()){setLinkErr("El link es obligatorio.");return;}
+    if(!isURL(form.taskLink)){setLinkErr("Ingresa una URL válida (https://...)");return;}
+    setLinkErr("");onSave(form);
+  };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:"1rem"}}>
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #d0d0cc",boxShadow:"0 8px 32px rgba(0,0,0,.18)",width:460,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{padding:"1rem 1.25rem",borderBottom:"1px solid #eee",background:"#f9f9f9",borderRadius:"12px 12px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h3 style={{fontSize:15,fontWeight:600,margin:0}}>{initial?"Editar tarea":"Nueva tarea"}</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1}}>×</button>
+        </div>
+        <div style={{padding:"1.25rem"}}>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Link de tarea (Teamwork)</label>
+            <input type="url" value={form.taskLink} onChange={e=>{set("taskLink",e.target.value);setLinkErr("");}} placeholder="https://app.teamwork.com/tasks/..."/>
+            {linkErr&&<div style={{fontSize:11,color:"#A32D2D",marginTop:4}}>{linkErr}</div>}
+          </div>
+          {[["Departamento","dept",DEPTS],["Categoría","cat",CATS],["Prioridad","prio",PRIOS]].map(([l,k,opts])=>(
+            <div key={k} style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>{l}</label>
+              <select value={form[k]} onChange={e=>set(k,e.target.value)}>{opts.map(o=><option key={o}>{o}</option>)}</select>
+            </div>
+          ))}
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Fecha límite</label>
+            <input type="date" value={form.due} onChange={e=>set("due",e.target.value)}/>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Descripción / notas</label>
+            <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{resize:"vertical"}} placeholder="Breve descripción..."/>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={onClose} style={{...btn("transparent","#555","1px solid #d0d0cc")}}>Cancelar</button>
+            <button onClick={handleSave} style={{...btn("#7F77DD","#fff")}}>Guardar tarea</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailModal({task,onClose,onMove,isManager,onEdit,onDelete}){
+  const colIdx=COLS.indexOf(task.col);
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:"1rem"}}>
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #d0d0cc",boxShadow:"0 8px 32px rgba(0,0,0,.22)",width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",display:"flex",flexDirection:"column"}}>
+        {/* Header */}
+        <div style={{padding:"1rem 1.25rem",borderBottom:"1px solid #eee",background:"#f9f9f9",borderRadius:"12px 12px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <h3 style={{fontSize:15,fontWeight:600,margin:0}}>Detalle de tarea</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1}}>×</button>
+        </div>
+        {/* Body */}
+        <div style={{padding:"1.25rem",flex:1}}>
+          <div style={{background:"#f5f5f3",borderRadius:8,padding:"10px 12px",marginBottom:14,border:"1px solid #e8e8e4"}}>
+            <div style={{fontSize:11,color:"#888",marginBottom:5,fontWeight:500,textTransform:"uppercase",letterSpacing:".04em"}}>Link Teamwork</div>
+            <a href={task.taskLink} target="_blank" rel="noreferrer" style={{fontSize:13,color:"#7F77DD",wordBreak:"break-all",lineHeight:1.5}}>{task.taskLink}</a>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+            <span style={badge(DEPT_COLORS[task.dept].bg,DEPT_COLORS[task.dept].color,{fontSize:12})}>{task.dept}</span>
+            <span style={badge("#f0f0ee","#555",{fontSize:12})}>{task.cat}</span>
+            <span style={badge(PRIO_COLORS[task.prio].bg,PRIO_COLORS[task.prio].color,{fontSize:12})}>{task.prio}</span>
+            <span style={badge(COL_COLORS[task.col].bg,COL_COLORS[task.col].color,{fontSize:12})}>{task.col}</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"110px 1fr",gap:"10px 8px",fontSize:13}}>
+            {[["Solicitado por",task.requestedBy],["Fecha límite",task.due?fmtDate(task.due):"—"],["Creado",fmtDT(task.createdAt)],["Descripción",task.notes||"—"]].map(([l,v])=>[
+              <span key={l+"l"} style={{color:"#888",fontSize:12,fontWeight:500,paddingTop:1}}>{l}</span>,
+              <span key={l+"v"} style={{color:"#1a1a1a",lineHeight:1.5}}>{v}</span>
+            ])}
+          </div>
+        </div>
+        {/* Footer */}
+        <div style={{padding:"1rem 1.25rem",borderTop:"1px solid #eee",background:"#f9f9f9",borderRadius:"0 0 12px 12px"}}>
+          {isManager?(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"flex",gap:8}}>
+                {colIdx>0&&<button onClick={()=>{onMove(task.id,-1);onClose();}} style={{...btn("#fff","#333","1px solid #d0d0cc"),flex:1}}>← Mover atrás</button>}
+                {colIdx<2&&<button onClick={()=>{onMove(task.id,1);onClose();}} style={{...btn(colIdx===1?"#639922":"#7F77DD","#fff"),flex:1}}>{colIdx===1?"Completar ✓":"En proceso →"}</button>}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>onEdit(task)} style={{...btn("#EEEDFE","#3C3489","1.5px solid #7F77DD"),flex:1}}>Editar tarea</button>
+                <button onClick={()=>onDelete(task.id)} style={{...btn("#FCEBEB","#A32D2D","1.5px solid #E24B4A"),flex:1}}>Eliminar tarea</button>
+              </div>
+            </div>
+          ):(
+            <button onClick={onClose} style={{...btn("#fff","#555","1px solid #d0d0cc"),width:"100%"}}>Cerrar</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UrgentView({onSubmit}){
+  const [form,setForm]=useState({taskLink:"",dept:DEPTS[0],cat:CATS[0],due:"",notes:""});
+  const [linkErr,setLinkErr]=useState("");
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const go=()=>{
+    if(!form.taskLink.trim()){setLinkErr("El link es obligatorio.");return;}
+    if(!isURL(form.taskLink)){setLinkErr("Ingresa una URL válida.");return;}
+    setLinkErr("");onSubmit(form);
+  };
+  return(
+    <div style={{maxWidth:480,margin:"0 auto"}}>
+      <div style={{...card,padding:"1.5rem"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"1rem"}}>
+          <span style={badge("#FCEBEB","#A32D2D")}>Urgente</span>
+          <h3 style={{fontSize:15,fontWeight:600}}>Solicitud de tarea urgente</h3>
+        </div>
+        <p style={{fontSize:13,color:"#666",marginBottom:"1.25rem",lineHeight:1.6}}>La tarea aparecerá marcada como urgente en el tablero. Completa todos los campos posibles.</p>
+        <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Link de tarea (Teamwork)</label>
+        <input type="url" value={form.taskLink} onChange={e=>{set("taskLink",e.target.value);setLinkErr("");}} placeholder="https://app.teamwork.com/tasks/..." style={{marginBottom:linkErr?4:12}}/>
+        {linkErr&&<div style={{fontSize:11,color:"#A32D2D",marginBottom:10}}>{linkErr}</div>}
+        {[["Departamento","dept",DEPTS],["Categoría","cat",CATS]].map(([l,k,opts])=>(
+          <div key={k} style={{marginBottom:12}}>
+            <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>{l}</label>
+            <select value={form[k]} onChange={e=>set(k,e.target.value)}>{opts.map(o=><option key={o}>{o}</option>)}</select>
+          </div>
+        ))}
+        <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Fecha límite</label>
+        <input type="date" value={form.due} onChange={e=>set("due",e.target.value)} style={{marginBottom:12}}/>
+        <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Contexto / detalles</label>
+        <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{resize:"vertical",marginBottom:16}} placeholder="¿Por qué es urgente?"/>
+        <button onClick={go} style={{...btn("#E24B4A","#fff"),width:"100%",padding:"10px",fontSize:14}}>Enviar solicitud urgente</button>
+      </div>
+    </div>
+  );
+}
+
+function LogView({log}){
+  return(
+    <div>
+      <h3 style={{fontSize:15,fontWeight:600,marginBottom:"1rem"}}>Log de actividad</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        {log.length===0&&<div style={{textAlign:"center",color:"#aaa",fontSize:13,padding:"2rem"}}>Sin actividad registrada</div>}
+        {log.map(l=>(
+          <div key={l.id} style={{...card,padding:".65rem 1rem",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+            <span style={{fontSize:11,color:"#bbb",minWidth:120,flexShrink:0}}>{fmtDT(l.ts)}</span>
+            <span style={badge("#EEEDFE","#3C3489",{fontSize:11,flexShrink:0})}>{l.user}</span>
+            <span style={badge("#f0f0ee","#555",{fontSize:11,flexShrink:0})}>{l.cat}</span>
+            <span style={{fontSize:13,color:"#555",flex:1}}><b style={{color:"#1a1a1a",fontWeight:500}}>{l.action}</b> · <a href={l.taskLink} target="_blank" rel="noreferrer" style={{color:"#7F77DD",fontSize:12}}>{shortLink(l.taskLink)}</a></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReportView({reportRange,setReportRange,reportTasks,logFiltered,onCSV,onPDF}){
+  const byDept=DEPTS.map(d=>({dept:d,total:reportTasks.filter(t=>t.dept===d).length,done:reportTasks.filter(t=>t.dept===d&&t.col==="Completado").length}));
+  const byCol=COLS.map(c=>({col:c,n:reportTasks.filter(t=>t.col===c).length}));
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:"1rem",flexWrap:"wrap"}}>
+        <h3 style={{fontSize:15,fontWeight:600}}>Reporte ejecutivo</h3>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}>
+          <span style={{fontSize:12,color:"#666"}}>Período:</span>
+          <select value={reportRange} onChange={e=>setReportRange(Number(e.target.value))} style={{width:"auto",fontSize:12,padding:"5px 8px"}}>
+            {[7,14,30].map(n=><option key={n} value={n}>Últimos {n} días</option>)}
+          </select>
+        </div>
+        <button onClick={onCSV} style={{...btn("#fff","#555","1px solid #d0d0cc"),padding:"6px 14px",fontSize:12}}>Descargar CSV</button>
+        <button onClick={onPDF} style={{...btn("#7F77DD","#fff"),padding:"6px 14px",fontSize:12}}>PDF / Imprimir</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
+        {byCol.map(({col,n})=>(
+          <div key={col} style={{...card,textAlign:"center",padding:".75rem"}}>
+            <div style={{fontSize:24,fontWeight:600,color:COL_COLORS[col].dot}}>{n}</div>
+            <div style={{fontSize:11,color:"#888",marginTop:2}}>{col}</div>
+          </div>
+        ))}
+      </div>
+      <h4 style={{fontSize:13,fontWeight:500,marginBottom:8,color:"#888"}}>Completado por departamento</h4>
+      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+        {byDept.filter(d=>d.total>0).map(d=>(
+          <div key={d.dept} style={{...card,padding:".65rem 1rem",display:"flex",alignItems:"center",gap:12}}>
+            <span style={badge(DEPT_COLORS[d.dept].bg,DEPT_COLORS[d.dept].color,{fontSize:11,minWidth:110,textAlign:"center",flexShrink:0})}>{d.dept}</span>
+            <div style={{flex:1,height:8,background:"#eee",borderRadius:99,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${(d.done/d.total)*100}%`,background:"#639922",borderRadius:99}}></div>
+            </div>
+            <span style={{fontSize:12,color:"#888",minWidth:90,textAlign:"right"}}>{d.done}/{d.total} completadas</span>
+          </div>
+        ))}
+        {byDept.every(d=>d.total===0)&&<div style={{textAlign:"center",color:"#aaa",fontSize:13,padding:"1.5rem"}}>Sin tareas en este período</div>}
+      </div>
+      <h4 style={{fontSize:13,fontWeight:500,marginBottom:8,color:"#888"}}>Actividad del período</h4>
+      <div style={{display:"flex",flexDirection:"column",gap:5}}>
+        {logFiltered.slice(0,25).map(l=>(
+          <div key={l.id} style={{...card,padding:".55rem .85rem",display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:11,color:"#bbb",minWidth:110,flexShrink:0}}>{fmtDT(l.ts)}</span>
+            <span style={badge("#f0f0ee","#666",{fontSize:11,flexShrink:0})}>{l.cat}</span>
+            <span style={{fontSize:13,color:"#555"}}><b style={{fontWeight:500,color:"#1a1a1a"}}>{l.user}</b> {l.action} · <a href={l.taskLink} target="_blank" rel="noreferrer" style={{color:"#7F77DD",fontSize:12}}>{shortLink(l.taskLink)}</a></span>
+          </div>
+        ))}
+        {logFiltered.length===0&&<div style={{textAlign:"center",color:"#aaa",fontSize:13,padding:"1rem"}}>Sin actividad en este período</div>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
