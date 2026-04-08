@@ -75,16 +75,44 @@ function App(){
   const [toast,setToast]=useState(null);
   const pollRef=useRef(null);
 
+  const prevTaskIds=useRef(null);
+
+  const requestNotifPermission=()=>{
+    if("Notification" in window && Notification.permission==="default"){
+      Notification.requestPermission();
+    }
+  };
+
+  const sendNotif=(task)=>{
+    if("Notification" in window && Notification.permission==="granted"){
+      const n=new Notification("OpsBoard — Nueva tarea", {
+        body:`${task.prio} · ${task.dept} · ${task.cat}${task.notes?" — "+task.notes:""}`,
+        icon:"https://elite-online-media.github.io/opsboard/favicon.ico",
+        tag:task.id,
+      });
+      setTimeout(()=>n.close(),6000);
+    }
+  };
+
   const loadData=async()=>{
     try{
       const [td,ld]=await Promise.all([fbGet("tasks"),fbGet("log")]);
-      setTasks(td?Object.values(td):[]);
+      const newTasks=td?Object.values(td):[];
+      // detect new tasks after first load
+      if(prevTaskIds.current!==null){
+        newTasks.forEach(t=>{
+          if(!prevTaskIds.current.has(t.id)) sendNotif(t);
+        });
+      }
+      prevTaskIds.current=new Set(newTasks.map(t=>t.id));
+      setTasks(newTasks);
       setLog(ld?Object.values(ld).sort((a,b)=>new Date(b.ts)-new Date(a.ts)):[]);
     }catch(e){console.error(e);}
     setLoading(false);
   };
 
   useEffect(()=>{
+    requestNotifPermission();
     loadData();
     pollRef.current=setInterval(loadData,5000);
     return()=>clearInterval(pollRef.current);
@@ -195,7 +223,7 @@ function App(){
         {view==="board"&&<BoardView tasks={filtered} allTasks={tasks} isManager={isManager} canMove={canMove} fDept={fDept} setFDept={setFDept} fPrio={fPrio} setFPrio={setFPrio} fCol={fCol} setFCol={setFCol} onNew={()=>{setEditTask(null);setShowForm(true);}} onMove={moveTask} onDetail={setDetail}/>}
         {view==="log"&&<LogView log={log}/>}
         {view==="report"&&<ReportView reportRange={reportRange} setReportRange={setReportRange} reportTasks={reportTasks} logFiltered={logFiltered} onCSV={downloadCSV} onPDF={downloadPDF}/>}
-        {view==="urgent"&&!isManager&&<UrgentView onSubmit={d=>{saveTask({...d,prio:"Urgente"});setView("board");}}/>}
+        {view==="urgent"&&!isManager&&<UrgentView onSubmit={d=>{saveTask(d);setView("board");}}/>}
       </div>
       {showForm&&isManager&&<TaskModal onSave={saveTask} onClose={()=>{setShowForm(false);setEditTask(null);}} initial={editTask}/>}
       {detail&&<DetailModal task={detail} onClose={()=>setDetail(null)} onMove={moveTask} isManager={isManager} canMove={canMove} onEdit={t=>{setEditTask(t);setDetail(null);setShowForm(true);}} onDelete={deleteTask}/>}
@@ -228,7 +256,7 @@ function Login({onLogin}){
 }
 
 function Topbar({user,view,setView,onLogout,isManager}){
-  const navs=isManager?[{id:"board",label:"Tablero"},{id:"log",label:"Log"},{id:"report",label:"Reportes"}]:[{id:"board",label:"Tablero"},{id:"urgent",label:"Solicitud urgente"},{id:"report",label:"Reportes"}];
+  const navs=isManager?[{id:"board",label:"Tablero"},{id:"log",label:"Log"},{id:"report",label:"Reportes"}]    :[{id:"board",label:"Tablero"},{id:"urgent",label:"Nueva solicitud"},{id:"report",label:"Reportes"}];
   const rc=ROLE_COLORS[user.role];
   return(
     <div style={{background:"#fff",borderBottom:"1px solid #e0e0dc",padding:".65rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,position:"sticky",top:0,zIndex:100}}>
@@ -432,7 +460,7 @@ function DetailModal({task,onClose,onMove,isManager,canMove,onEdit,onDelete}){
 }
 
 function UrgentView({onSubmit}){
-  const [form,setForm]=useState({taskLink:"",dept:DEPTS[0],cat:CATS[0],due:"",notes:""});
+  const [form,setForm]=useState({taskLink:"",dept:DEPTS[0],cat:CATS[0],prio:"Normal",due:"",notes:""});
   const [linkErr,setLinkErr]=useState("");
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const go=()=>{
@@ -444,14 +472,13 @@ function UrgentView({onSubmit}){
     <div style={{maxWidth:480,margin:"0 auto"}}>
       <div style={{...card,padding:"1.5rem"}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:"1rem"}}>
-          <span style={badge("#FCEBEB","#A32D2D")}>Urgente</span>
-          <h3 style={{fontSize:15,fontWeight:600}}>Solicitud de tarea urgente</h3>
+          <h3 style={{fontSize:15,fontWeight:600}}>Nueva solicitud de tarea</h3>
         </div>
-        <p style={{fontSize:13,color:"#666",marginBottom:"1.25rem",lineHeight:1.6}}>La tarea aparecerá marcada como urgente en el tablero.</p>
+        <p style={{fontSize:13,color:"#666",marginBottom:"1.25rem",lineHeight:1.6}}>Completa los campos para enviar tu solicitud. Selecciona urgente solo si requiere atención inmediata.</p>
         <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Link de tarea (Teamwork)</label>
         <input type="url" value={form.taskLink} onChange={e=>{set("taskLink",e.target.value);setLinkErr("");}} placeholder="https://app.teamwork.com/tasks/..." style={{marginBottom:linkErr?4:12}}/>
         {linkErr&&<div style={{fontSize:11,color:"#A32D2D",marginBottom:10}}>{linkErr}</div>}
-        {[["Departamento","dept",DEPTS],["Categoría","cat",CATS]].map(([l,k,opts])=>(
+        {[["Departamento","dept",DEPTS],["Categoría","cat",CATS],["Prioridad","prio",PRIOS]].map(([l,k,opts])=>(
           <div key={k} style={{marginBottom:12}}>
             <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>{l}</label>
             <select value={form[k]} onChange={e=>set(k,e.target.value)}>{opts.map(o=><option key={o}>{o}</option>)}</select>
@@ -460,8 +487,10 @@ function UrgentView({onSubmit}){
         <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Fecha límite</label>
         <input type="date" value={form.due} onChange={e=>set("due",e.target.value)} style={{marginBottom:12}}/>
         <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Contexto / detalles</label>
-        <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{resize:"vertical",marginBottom:16}} placeholder="¿Por qué es urgente?"/>
-        <button onClick={go} style={{...btn("#E24B4A","#fff"),width:"100%",padding:"10px",fontSize:14}}>Enviar solicitud urgente</button>
+        <textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={3} style={{resize:"vertical",marginBottom:16}} placeholder="Describe la solicitud..."/>
+        <button onClick={go} style={{...btn(form.prio==="Urgente"?"#E24B4A":"#7F77DD","#fff"),width:"100%",padding:"10px",fontSize:14}}>
+          Enviar solicitud {form.prio==="Urgente"&&"— Urgente"}
+        </button>
       </div>
     </div>
   );
