@@ -272,7 +272,12 @@ function BoardView({tasks,allTasks,isManager,canMove,fDept,setFDept,fPrio,setFPr
               <span style={badge(COL_COLORS[col].bg,COL_COLORS[col].color)}>{tasks.filter(t=>t.col===col).length}</span>
             </div>
             <div style={{padding:8,display:"flex",flexDirection:"column",gap:8,minHeight:120}}>
-              {tasks.filter(t=>t.col===col).map(t=><TaskCard key={t.id} task={t} canMove={canMove} colIdx={COLS.indexOf(col)} onDetail={()=>onDetail(t)} onMove={onMove}/>)}
+              {tasks.filter(t=>t.col===col).sort((a,b)=>{
+                const aUrg=a.prio==="Urgente"?0:1;
+                const bUrg=b.prio==="Urgente"?0:1;
+                if(aUrg!==bUrg)return aUrg-bUrg;
+                return new Date(a.createdAt)-new Date(b.createdAt);
+              }).map(t=><TaskCard key={t.id} task={t} canMove={canMove} colIdx={COLS.indexOf(col)} onDetail={()=>onDetail(t)} onMove={onMove}/>)}
               {tasks.filter(t=>t.col===col).length===0&&<div style={{textAlign:"center",color:"#aaa",fontSize:12,padding:"1.5rem 0"}}>Sin tareas</div>}
             </div>
           </div>
