@@ -7,15 +7,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    databaseURL: "https://opsboard-eom-default-rtdb.firebaseio.com"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
-</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f3;color:#1a1a1a;font-size:14px}
@@ -23,32 +14,33 @@ input,select,textarea{font-family:inherit;font-size:13px;padding:7px 10px;border
 input:focus,select:focus,textarea:focus{border-color:#7F77DD;box-shadow:0 0 0 3px rgba(127,119,221,.15)}
 button{font-family:inherit;cursor:pointer}
 a{text-decoration:none}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:#ccc;border-radius:99px}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#ccc;border-radius:99px}
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#888">Conectando...</div></div>
+
 <script type="text/babel">
 const {useState,useEffect,useRef}=React;
 
+/* ── Firebase REST helpers ───────────────────────────── */
+const FB="https://opsboard-eom-default-rtdb.firebaseio.com";
+const fbGet=async path=>{const r=await fetch(`${FB}/${path}.json`);return r.json();};
+const fbSet=async(path,data)=>fetch(`${FB}/${path}.json`,{method:"PUT",body:JSON.stringify(data)});
+const fbPatch=async(path,data)=>fetch(`${FB}/${path}.json`,{method:"PATCH",body:JSON.stringify(data)});
+const fbDel=async path=>fetch(`${FB}/${path}.json`,{method:"DELETE"});
+
+/* ── Constants ───────────────────────────────────────── */
 const DEPTS=["Desarrollo web","Diseño gráfico","Video","Contenido","Redes sociales"];
 const CATS=["Website","Cambio web","Video","Cambio video","Papelería corporativa","Ítems físico","Cambio papelería corporativa","Cambio ítems físico"];
 const PRIOS=["Urgente","Normal","Baja"];
 const COLS=["Asignado","En proceso","Completado"];
-
 const DEPT_COLORS={"Desarrollo web":{bg:"#E6F1FB",color:"#0C447C"},"Diseño gráfico":{bg:"#FBEAF0",color:"#72243E"},"Video":{bg:"#FAECE7",color:"#712B13"},"Contenido":{bg:"#EAF3DE",color:"#27500A"},"Redes sociales":{bg:"#EEEDFE",color:"#3C3489"}};
 const PRIO_COLORS={"Urgente":{bg:"#FCEBEB",color:"#A32D2D"},"Normal":{bg:"#E6F1FB",color:"#0C447C"},"Baja":{bg:"#F1EFE8",color:"#444441"}};
 const COL_COLORS={"Asignado":{bg:"#EEEDFE",color:"#3C3489",dot:"#7F77DD"},"En proceso":{bg:"#FAEEDA",color:"#633806",dot:"#EF9F27"},"Completado":{bg:"#EAF3DE",color:"#27500A",dot:"#639922"}};
 const ROLE_COLORS={manager:{bg:"#EEEDFE",color:"#3C3489"},sales:{bg:"#EAF3DE",color:"#27500A"},onboarding:{bg:"#FAEEDA",color:"#633806"}};
 const ROLE_LABELS={manager:"Manager",sales:"Venta",onboarding:"Onboarding"};
-
-const USERS=[
-  {id:"mgr",name:"Manager",role:"manager",pass:"manager123"},
-  {id:"venta",name:"Venta",role:"sales",pass:"venta123"},
-  {id:"onb",name:"Onboarding",role:"onboarding",pass:"onboarding123"},
-];
+const USERS=[{id:"mgr",name:"Manager",role:"manager",pass:"manager123"},{id:"venta",name:"Venta",role:"sales",pass:"venta123"},{id:"onb",name:"Onboarding",role:"onboarding",pass:"onboarding123"}];
 
 const fmtDate=d=>new Date(d).toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});
 const fmtDT=d=>new Date(d).toLocaleString("es-MX",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
@@ -56,27 +48,16 @@ const nowISO=()=>new Date().toISOString();
 const uid=()=>Math.random().toString(36).slice(2,10);
 const isURL=v=>{try{new URL(v);return true;}catch{return false;}};
 const shortLink=url=>{try{const u=new URL(url);return u.hostname.replace("www.","")+u.pathname.slice(0,26)+(u.pathname.length>26?"…":"");}catch{return url.slice(0,38);}};
-
-const SAMPLE_TASKS=[
-  {id:uid(),taskLink:"https://app.teamwork.com/tasks/001",dept:"Desarrollo web",cat:"Website",prio:"Urgente",col:"Asignado",due:"2026-04-10",requestedBy:"Venta",createdAt:new Date(Date.now()-3*86400000).toISOString(),notes:"Landing page campaña verano"},
-  {id:uid(),taskLink:"https://app.teamwork.com/tasks/002",dept:"Diseño gráfico",cat:"Papelería corporativa",prio:"Normal",col:"En proceso",due:"2026-04-15",requestedBy:"Onboarding",createdAt:new Date(Date.now()-2*86400000).toISOString(),notes:"Nuevo cliente — kit bienvenida"},
-  {id:uid(),taskLink:"https://app.teamwork.com/tasks/003",dept:"Video",cat:"Video",prio:"Normal",col:"Completado",due:"2026-04-07",requestedBy:"Venta",createdAt:new Date(Date.now()-7*86400000).toISOString(),notes:"Video testimonial cliente X"},
-];
-const SAMPLE_LOG=[
-  {id:uid(),ts:new Date(Date.now()-7*86400000).toISOString(),user:"Manager",action:"creó",taskLink:"https://app.teamwork.com/tasks/003",cat:"Video"},
-  {id:uid(),ts:new Date(Date.now()-3*86400000).toISOString(),user:"Manager",action:"creó",taskLink:"https://app.teamwork.com/tasks/001",cat:"Website"},
-  {id:uid(),ts:new Date(Date.now()-2*86400000).toISOString(),user:"Manager",action:"creó",taskLink:"https://app.teamwork.com/tasks/002",cat:"Papelería corporativa"},
-];
-
-// ─── styles helpers ───────────────────────────────────────────────
-const card={background:"#fff",border:"1px solid #e0e0dc",borderRadius:10,padding:"14px 16px"};
 const badge=(bg,color,extra={})=>({fontSize:11,padding:"3px 9px",borderRadius:99,background:bg,color,fontWeight:500,...extra});
 const btn=(bg,color,border="none",extra={})=>({padding:"8px 16px",borderRadius:8,background:bg,color,border,fontSize:13,cursor:"pointer",fontWeight:500,...extra});
+const card={background:"#fff",border:"1px solid #e0e0dc",borderRadius:10,padding:"14px 16px"};
 
+/* ── App ─────────────────────────────────────────────── */
 function App(){
   const [user,setUser]=useState(null);
-  const [tasks,setTasks]=useState(SAMPLE_TASKS);
-  const [log,setLog]=useState(SAMPLE_LOG);
+  const [tasks,setTasks]=useState([]);
+  const [log,setLog]=useState([]);
+  const [loading,setLoading]=useState(true);
   const [view,setView]=useState("board");
   const [fDept,setFDept]=useState("Todos");
   const [fPrio,setFPrio]=useState("Todos");
@@ -86,82 +67,73 @@ function App(){
   const [detail,setDetail]=useState(null);
   const [reportRange,setReportRange]=useState(7);
   const [toast,setToast]=useState(null);
-  const loaded=useRef(false);
+  const pollRef=useRef(null);
+
+  const loadData=async()=>{
+    try{
+      const [td,ld]=await Promise.all([fbGet("tasks"),fbGet("log")]);
+      setTasks(td?Object.values(td):[]);
+      setLog(ld?Object.values(ld).sort((a,b)=>new Date(b.ts)-new Date(a.ts)):[]);
+    }catch(e){console.error(e);}
+    setLoading(false);
+  };
 
   useEffect(()=>{
-    if(loaded.current)return;
-    loaded.current=true;
-    db.ref("tasks").on("value",snap=>{
-      const val=snap.val();
-      if(val) setTasks(Object.values(val));
-    });
-    db.ref("log").on("value",snap=>{
-      const val=snap.val();
-      if(val) setLog(Object.values(val).sort((a,b)=>new Date(b.ts)-new Date(a.ts)));
-    });
+    loadData();
+    pollRef.current=setInterval(loadData,5000);
+    return()=>clearInterval(pollRef.current);
   },[]);
 
-  // sync tasks to firebase
-  const saveTasks=(updated)=>{
-    const obj={};
-    updated.forEach(t=>{ obj[t.id]=t; });
-    db.ref("tasks").set(obj);
-  };
-  const saveLog=(entry)=>{ db.ref("log/"+entry.id).set(entry); };
-
   const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
-  const addLog=(action,taskLink,cat)=>{
-    const entry={id:uid(),ts:nowISO(),user:user?.name||"Sistema",action,taskLink,cat};
+
+  const addLog=async(action,taskLink,cat,currentUser)=>{
+    const entry={id:uid(),ts:nowISO(),user:currentUser||user?.name||"Sistema",action,taskLink,cat};
+    await fbPatch("log",{[entry.id]:entry});
     setLog(prev=>[entry,...prev]);
-    saveLog(entry);
   };
 
-  const moveTask=(id,dir)=>{
-    setTasks(prev=>{
-      const updated=prev.map(t=>{
-        if(t.id!==id)return t;
-        const next=COLS[COLS.indexOf(t.col)+dir];
-        if(!next)return t;
-        addLog(`movió a ${next}`,t.taskLink,t.cat);
-        return{...t,col:next};
-      });
-      saveTasks(updated);
-      return updated;
+  const moveTask=async(id,dir)=>{
+    const updated=tasks.map(t=>{
+      if(t.id!==id)return t;
+      const next=COLS[COLS.indexOf(t.col)+dir];
+      if(!next)return t;
+      return{...t,col:next};
     });
+    const moved=updated.find(t=>t.id===id);
+    const obj={};updated.forEach(t=>{obj[t.id]=t;});
+    await fbSet("tasks",obj);
+    await addLog(`movió a ${moved.col}`,moved.taskLink,moved.cat,user.name);
+    setTasks(updated);
     showToast("Tarea actualizada");
   };
 
-  const saveTask=(data)=>{
+  const saveTask=async(data)=>{
     if(editTask){
-      setTasks(prev=>{
-        const updated=prev.map(t=>t.id===editTask.id?{...t,...data}:t);
-        saveTasks(updated);
-        return updated;
-      });
-      addLog("editó",data.taskLink,data.cat);
+      const updated=tasks.map(t=>t.id===editTask.id?{...t,...data}:t);
+      const obj={};updated.forEach(t=>{obj[t.id]=t;});
+      await fbSet("tasks",obj);
+      await addLog("editó",data.taskLink,data.cat,user.name);
+      setTasks(updated);
       showToast("Tarea actualizada");
     }else{
       const nt={id:uid(),createdAt:nowISO(),col:"Asignado",requestedBy:user.name,...data};
-      setTasks(prev=>{
-        const updated=[nt,...prev];
-        saveTasks(updated);
-        return updated;
-      });
-      addLog("creó",data.taskLink,data.cat);
+      const updated=[nt,...tasks];
+      const obj={};updated.forEach(t=>{obj[t.id]=t;});
+      await fbSet("tasks",obj);
+      await addLog("creó",data.taskLink,data.cat,user.name);
+      setTasks(updated);
       showToast("Tarea creada");
     }
     setShowForm(false);setEditTask(null);
   };
 
-  const deleteTask=(id)=>{
+  const deleteTask=async(id)=>{
     const t=tasks.find(x=>x.id===id);
-    setTasks(prev=>{
-      const updated=prev.filter(x=>x.id!==id);
-      saveTasks(updated);
-      db.ref("tasks/"+id).remove();
-      return updated;
-    });
-    addLog("eliminó",t?.taskLink||"",t?.cat||"");
+    const updated=tasks.filter(x=>x.id!==id);
+    const obj={};updated.forEach(t=>{obj[t.id]=t;});
+    await fbSet("tasks",obj);
+    await addLog("eliminó",t?.taskLink||"",t?.cat||"",user.name);
+    setTasks(updated);
     setDetail(null);
     showToast("Tarea eliminada","warn");
   };
@@ -186,21 +158,22 @@ function App(){
 
   const downloadPDF=()=>{
     const w=window.open("","_blank");
-    const tRows=reportTasks.map(t=>`<tr><td><a href="${t.taskLink}" style="color:#7F77DD">${shortLink(t.taskLink)}</a></td><td>${t.dept}</td><td>${t.cat}</td><td>${t.prio}</td><td style="color:${t.col==='Completado'?'#27500A':t.col==='En proceso'?'#633806':'#3C3489'}">${t.col}</td><td>${t.requestedBy}</td><td>${t.due||"—"}</td></tr>`).join("");
+    const tRows=reportTasks.map(t=>`<tr><td><a href="${t.taskLink}" style="color:#7F77DD">${shortLink(t.taskLink)}</a></td><td>${t.dept}</td><td>${t.cat}</td><td>${t.prio}</td><td>${t.col}</td><td>${t.requestedBy}</td><td>${t.due||"—"}</td></tr>`).join("");
     const lRows=logFiltered.slice(0,30).map(l=>`<tr><td>${fmtDT(l.ts)}</td><td>${l.user}</td><td>${l.action}</td><td>${l.cat}</td><td><a href="${l.taskLink}" style="color:#7F77DD">${shortLink(l.taskLink)}</a></td></tr>`).join("");
     const byCol=COLS.map(c=>({col:c,n:reportTasks.filter(t=>t.col===c).length}));
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpsBoard Reporte</title><style>body{font-family:Arial,sans-serif;padding:2rem;color:#222}h1{color:#7F77DD}h2{margin-top:2rem;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:.5rem}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f5f5f5;padding:7px;text-align:left;font-size:11px}td{padding:6px 7px;border-bottom:1px solid #eee}.stats{display:flex;gap:1rem;margin:1rem 0}.s{background:#f9f9f9;padding:.75rem 1.25rem;border-radius:8px;text-align:center}.sn{font-size:22px;font-weight:700;color:#7F77DD}.sl{font-size:11px;color:#888}</style></head><body>
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpsBoard Reporte</title><style>body{font-family:Arial,sans-serif;padding:2rem;color:#222}h1{color:#7F77DD}h2{margin-top:2rem;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#999;margin-bottom:.5rem}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#f5f5f5;padding:7px;text-align:left}td{padding:6px 7px;border-bottom:1px solid #eee}.stats{display:flex;gap:1rem;margin:1rem 0}.s{background:#f9f9f9;padding:.75rem 1.25rem;border-radius:8px;text-align:center}.sn{font-size:22px;font-weight:700;color:#7F77DD}.sl{font-size:11px;color:#888}</style></head><body>
     <h1>OpsBoard — Reporte ejecutivo</h1>
     <p style="color:#888;font-size:13px">Período: últimos ${reportRange} días · ${fmtDate(nowISO())}</p>
     <div class="stats">${byCol.map(c=>`<div class="s"><div class="sn">${c.n}</div><div class="sl">${c.col}</div></div>`).join("")}<div class="s"><div class="sn">${reportTasks.filter(t=>t.prio==="Urgente").length}</div><div class="sl">Urgentes</div></div></div>
-    <h2>Tareas</h2><table><tr><th>Link</th><th>Departamento</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><th>Por</th><th>Vence</th></tr>${tRows}</table>
-    <h2>Log de actividad</h2><table><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Categoría</th><th>Link</th></tr>${lRows}</table>
+    <h2>Tareas</h2><table><tr><th>Link</th><th>Área</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><th>Por</th><th>Vence</th></tr>${tRows}</table>
+    <h2>Log</h2><table><tr><th>Fecha</th><th>Usuario</th><th>Acción</th><th>Categoría</th><th>Link</th></tr>${lRows}</table>
     <p style="margin-top:3rem;font-size:11px;color:#bbb;border-top:1px solid #eee;padding-top:1rem">OpsBoard · Área Creativa · ${new Date().getFullYear()}</p>
     </body></html>`);
     w.document.close();setTimeout(()=>w.print(),500);
   };
 
-  if(!user)return<Login onLogin={u=>{setUser(u);}} />;
+  if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"#888",fontSize:14}}>Cargando datos...</div>;
+  if(!user)return<Login onLogin={setUser}/>;
   const isManager=user.role==="manager";
 
   return(
@@ -211,7 +184,7 @@ function App(){
         {view==="board"&&<BoardView tasks={filtered} allTasks={tasks} isManager={isManager} fDept={fDept} setFDept={setFDept} fPrio={fPrio} setFPrio={setFPrio} fCol={fCol} setFCol={setFCol} onNew={()=>{setEditTask(null);setShowForm(true);}} onMove={moveTask} onDetail={setDetail}/>}
         {view==="log"&&<LogView log={log}/>}
         {view==="report"&&<ReportView reportRange={reportRange} setReportRange={setReportRange} reportTasks={reportTasks} logFiltered={logFiltered} onCSV={downloadCSV} onPDF={downloadPDF}/>}
-        {view==="urgent"&&!isManager&&<UrgentView onSubmit={d=>{saveTask({...d,prio:"Urgente"});setView("board");}} />}
+        {view==="urgent"&&!isManager&&<UrgentView onSubmit={d=>{saveTask({...d,prio:"Urgente"});setView("board");}}/>}
       </div>
       {showForm&&isManager&&<TaskModal onSave={saveTask} onClose={()=>{setShowForm(false);setEditTask(null);}} initial={editTask}/>}
       {detail&&<DetailModal task={detail} onClose={()=>setDetail(null)} onMove={moveTask} isManager={isManager} onEdit={t=>{setEditTask(t);setDetail(null);setShowForm(true);}} onDelete={deleteTask}/>}
@@ -247,9 +220,7 @@ function Login({onLogin}){
 }
 
 function Topbar({user,view,setView,onLogout,isManager}){
-  const navs=isManager
-    ?[{id:"board",label:"Tablero"},{id:"log",label:"Log"},{id:"report",label:"Reportes"}]
-    :[{id:"board",label:"Tablero"},{id:"urgent",label:"Solicitud urgente"},{id:"report",label:"Reportes"}];
+  const navs=isManager?[{id:"board",label:"Tablero"},{id:"log",label:"Log"},{id:"report",label:"Reportes"}]:[{id:"board",label:"Tablero"},{id:"urgent",label:"Solicitud urgente"},{id:"report",label:"Reportes"}];
   const rc=ROLE_COLORS[user.role];
   return(
     <div style={{background:"#fff",borderBottom:"1px solid #e0e0dc",padding:".65rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,position:"sticky",top:0,zIndex:100}}>
@@ -318,7 +289,7 @@ function Sel({label,value,onChange,opts}){
 function TaskCard({task,onMove,colIdx,onDetail}){
   const isUrgent=task.prio==="Urgente";
   return(
-    <div onClick={onDetail} style={{background:"#fff",border:"1px solid #e0e0dc",borderLeft:isUrgent?"3px solid #E24B4A":"1px solid #e0e0dc",borderRadius:9,padding:"10px 12px",cursor:"pointer",transition:"box-shadow .15s"}}
+    <div onClick={onDetail} style={{background:"#fff",border:"1px solid #e0e0dc",borderLeft:isUrgent?"3px solid #E24B4A":"1px solid #e0e0dc",borderRadius:9,padding:"10px 12px",cursor:"pointer"}}
       onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,.08)"}
       onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6,gap:6}}>
@@ -393,12 +364,10 @@ function DetailModal({task,onClose,onMove,isManager,onEdit,onDelete}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:"1rem"}}>
       <div style={{background:"#fff",borderRadius:12,border:"1px solid #d0d0cc",boxShadow:"0 8px 32px rgba(0,0,0,.22)",width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",display:"flex",flexDirection:"column"}}>
-        {/* Header */}
         <div style={{padding:"1rem 1.25rem",borderBottom:"1px solid #eee",background:"#f9f9f9",borderRadius:"12px 12px 0 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <h3 style={{fontSize:15,fontWeight:600,margin:0}}>Detalle de tarea</h3>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"#888",lineHeight:1}}>×</button>
         </div>
-        {/* Body */}
         <div style={{padding:"1.25rem",flex:1}}>
           <div style={{background:"#f5f5f3",borderRadius:8,padding:"10px 12px",marginBottom:14,border:"1px solid #e8e8e4"}}>
             <div style={{fontSize:11,color:"#888",marginBottom:5,fontWeight:500,textTransform:"uppercase",letterSpacing:".04em"}}>Link Teamwork</div>
@@ -412,12 +381,11 @@ function DetailModal({task,onClose,onMove,isManager,onEdit,onDelete}){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"110px 1fr",gap:"10px 8px",fontSize:13}}>
             {[["Solicitado por",task.requestedBy],["Fecha límite",task.due?fmtDate(task.due):"—"],["Creado",fmtDT(task.createdAt)],["Descripción",task.notes||"—"]].map(([l,v])=>[
-              <span key={l+"l"} style={{color:"#888",fontSize:12,fontWeight:500,paddingTop:1}}>{l}</span>,
+              <span key={l+"l"} style={{color:"#888",fontSize:12,fontWeight:500}}>{l}</span>,
               <span key={l+"v"} style={{color:"#1a1a1a",lineHeight:1.5}}>{v}</span>
             ])}
           </div>
         </div>
-        {/* Footer */}
         <div style={{padding:"1rem 1.25rem",borderTop:"1px solid #eee",background:"#f9f9f9",borderRadius:"0 0 12px 12px"}}>
           {isManager?(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -455,7 +423,7 @@ function UrgentView({onSubmit}){
           <span style={badge("#FCEBEB","#A32D2D")}>Urgente</span>
           <h3 style={{fontSize:15,fontWeight:600}}>Solicitud de tarea urgente</h3>
         </div>
-        <p style={{fontSize:13,color:"#666",marginBottom:"1.25rem",lineHeight:1.6}}>La tarea aparecerá marcada como urgente en el tablero. Completa todos los campos posibles.</p>
+        <p style={{fontSize:13,color:"#666",marginBottom:"1.25rem",lineHeight:1.6}}>La tarea aparecerá marcada como urgente en el tablero.</p>
         <label style={{fontSize:12,color:"#666",display:"block",marginBottom:4}}>Link de tarea (Teamwork)</label>
         <input type="url" value={form.taskLink} onChange={e=>{set("taskLink",e.target.value);setLinkErr("");}} placeholder="https://app.teamwork.com/tasks/..." style={{marginBottom:linkErr?4:12}}/>
         {linkErr&&<div style={{fontSize:11,color:"#A32D2D",marginBottom:10}}>{linkErr}</div>}
