@@ -38,9 +38,15 @@ const COLS=["Asignado","En proceso","Completado"];
 const DEPT_COLORS={"Desarrollo web":{bg:"#E6F1FB",color:"#0C447C"},"Diseño gráfico":{bg:"#FBEAF0",color:"#72243E"},"Video":{bg:"#FAECE7",color:"#712B13"},"Contenido":{bg:"#EAF3DE",color:"#27500A"},"Redes sociales":{bg:"#EEEDFE",color:"#3C3489"}};
 const PRIO_COLORS={"Urgente":{bg:"#FCEBEB",color:"#A32D2D"},"Normal":{bg:"#E6F1FB",color:"#0C447C"},"Baja":{bg:"#F1EFE8",color:"#444441"}};
 const COL_COLORS={"Asignado":{bg:"#EEEDFE",color:"#3C3489",dot:"#7F77DD"},"En proceso":{bg:"#FAEEDA",color:"#633806",dot:"#EF9F27"},"Completado":{bg:"#EAF3DE",color:"#27500A",dot:"#639922"}};
-const ROLE_COLORS={manager:{bg:"#EEEDFE",color:"#3C3489"},sales:{bg:"#EAF3DE",color:"#27500A"},onboarding:{bg:"#FAEEDA",color:"#633806"}};
-const ROLE_LABELS={manager:"Manager",sales:"Venta",onboarding:"Onboarding"};
-const USERS=[{id:"mgr",name:"Manager",role:"manager",pass:"manager123"},{id:"venta",name:"Venta",role:"sales",pass:"venta123"},{id:"onb",name:"Onboarding",role:"onboarding",pass:"onboarding123"}];
+const ROLE_COLORS={manager:{bg:"#EEEDFE",color:"#3C3489"},sales:{bg:"#EAF3DE",color:"#27500A"},onboarding:{bg:"#FAEEDA",color:"#633806"},ops:{bg:"#E6F1FB",color:"#0C447C"}};
+const ROLE_LABELS={manager:"Manager",sales:"Venta",onboarding:"Onboarding",ops:"Operaciones"};
+const USERS=[
+  {id:"mgr",  name:"Manager",           role:"manager",    pass:"Mgr#2026$Ops"},
+  {id:"venta", name:"Venta",            role:"sales",      pass:"Vnt@Board#26"},
+  {id:"onb",  name:"Onboarding",        role:"onboarding", pass:"Onb$2026#Elite"},
+  {id:"ops",  name:"Operaciones",       role:"ops",        pass:"Ops#Elite$26"},
+  {id:"cs",   name:"Customer Services", role:"sales",      pass:"CS@Board#2026"},
+];
 
 const fmtDate=d=>new Date(d).toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"numeric"});
 const fmtDT=d=>new Date(d).toLocaleString("es-MX",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"});
@@ -92,12 +98,18 @@ function App(){
     setLog(prev=>[entry,...prev]);
   };
 
+  // Operaciones puede mover a En proceso y Completado; Manager puede todo
+  const canMove = user.role==="manager" || user.role==="ops";
+
   const moveTask=async(id,dir)=>{
     const updated=tasks.map(t=>{
       if(t.id!==id)return t;
       const next=COLS[COLS.indexOf(t.col)+dir];
       if(!next)return t;
-      return{...t,col:next};
+      const ts={...t};
+      if(next==="En proceso") ts.startedAt=nowISO();
+      if(next==="Completado") ts.completedAt=nowISO();
+      return{...ts,col:next};
     });
     const moved=updated.find(t=>t.id===id);
     const obj={};updated.forEach(t=>{obj[t.id]=t;});
@@ -181,13 +193,13 @@ function App(){
       {toast&&<div style={{position:"fixed",top:16,right:16,zIndex:9999,padding:"10px 18px",borderRadius:8,background:toast.type==="warn"?"#FCEBEB":"#EAF3DE",color:toast.type==="warn"?"#A32D2D":"#27500A",fontSize:13,fontWeight:500,border:`1px solid ${toast.type==="warn"?"#F09595":"#97C459"}`,boxShadow:"0 4px 12px rgba(0,0,0,.12)"}}>{toast.msg}</div>}
       <Topbar user={user} view={view} setView={setView} onLogout={()=>{setUser(null);setView("board");}} isManager={isManager}/>
       <div style={{padding:"1rem",maxWidth:1200,margin:"0 auto"}}>
-        {view==="board"&&<BoardView tasks={filtered} allTasks={tasks} isManager={isManager} fDept={fDept} setFDept={setFDept} fPrio={fPrio} setFPrio={setFPrio} fCol={fCol} setFCol={setFCol} onNew={()=>{setEditTask(null);setShowForm(true);}} onMove={moveTask} onDetail={setDetail}/>}
+        {view==="board"&&<BoardView tasks={filtered} allTasks={tasks} isManager={isManager} canMove={canMove} fDept={fDept} setFDept={setFDept} fPrio={fPrio} setFPrio={setFPrio} fCol={fCol} setFCol={setFCol} onNew={()=>{setEditTask(null);setShowForm(true);}} onMove={moveTask} onDetail={setDetail}/>}
         {view==="log"&&<LogView log={log}/>}
         {view==="report"&&<ReportView reportRange={reportRange} setReportRange={setReportRange} reportTasks={reportTasks} logFiltered={logFiltered} onCSV={downloadCSV} onPDF={downloadPDF}/>}
         {view==="urgent"&&!isManager&&<UrgentView onSubmit={d=>{saveTask({...d,prio:"Urgente"});setView("board");}}/>}
       </div>
       {showForm&&isManager&&<TaskModal onSave={saveTask} onClose={()=>{setShowForm(false);setEditTask(null);}} initial={editTask}/>}
-      {detail&&<DetailModal task={detail} onClose={()=>setDetail(null)} onMove={moveTask} isManager={isManager} onEdit={t=>{setEditTask(t);setDetail(null);setShowForm(true);}} onDelete={deleteTask}/>}
+      {detail&&<DetailModal task={detail} onClose={()=>setDetail(null)} onMove={moveTask} isManager={isManager} canMove={canMove} onEdit={t=>{setEditTask(t);setDetail(null);setShowForm(true);}} onDelete={deleteTask}/>}
     </div>
   );
 }
@@ -211,9 +223,6 @@ function Login({onLogin}){
         <input type="password" value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="Contraseña" style={{marginBottom:12}}/>
         {err&&<div style={{fontSize:12,color:"#A32D2D",background:"#FCEBEB",padding:"7px 10px",borderRadius:7,marginBottom:12}}>{err}</div>}
         <button onClick={go} style={{...btn("#7F77DD","#fff"),width:"100%",padding:"10px",fontSize:14}}>Ingresar</button>
-        <div style={{marginTop:"1.5rem",fontSize:11,color:"#aaa",borderTop:"1px solid #eee",paddingTop:"1rem",lineHeight:1.8}}>
-          <b>Demo:</b> Manager → manager123<br/>Venta → venta123 · Onboarding → onboarding123
-        </div>
       </div>
     </div>
   );
@@ -237,7 +246,7 @@ function Topbar({user,view,setView,onLogout,isManager}){
   );
 }
 
-function BoardView({tasks,allTasks,isManager,fDept,setFDept,fPrio,setFPrio,fCol,setFCol,onNew,onMove,onDetail}){
+function BoardView({tasks,allTasks,isManager,canMove,fDept,setFDept,fPrio,setFPrio,fCol,setFCol,onNew,onMove,onDetail}){
   const counts={Asignado:allTasks.filter(t=>t.col==="Asignado").length,"En proceso":allTasks.filter(t=>t.col==="En proceso").length,Completado:allTasks.filter(t=>t.col==="Completado").length,Urgentes:allTasks.filter(t=>t.prio==="Urgente").length};
   return(
     <div>
@@ -265,7 +274,7 @@ function BoardView({tasks,allTasks,isManager,fDept,setFDept,fPrio,setFPrio,fCol,
               <span style={badge(COL_COLORS[col].bg,COL_COLORS[col].color)}>{tasks.filter(t=>t.col===col).length}</span>
             </div>
             <div style={{padding:8,display:"flex",flexDirection:"column",gap:8,minHeight:120}}>
-              {tasks.filter(t=>t.col===col).map(t=><TaskCard key={t.id} task={t} onMove={isManager?onMove:null} colIdx={COLS.indexOf(col)} onDetail={()=>onDetail(t)}/>)}
+              {tasks.filter(t=>t.col===col).map(t=><TaskCard key={t.id} task={t} canMove={canMove} colIdx={COLS.indexOf(col)} onDetail={()=>onDetail(t)} onMove={onMove}/>)}
               {tasks.filter(t=>t.col===col).length===0&&<div style={{textAlign:"center",color:"#aaa",fontSize:12,padding:"1.5rem 0"}}>Sin tareas</div>}
             </div>
           </div>
@@ -286,7 +295,7 @@ function Sel({label,value,onChange,opts}){
   );
 }
 
-function TaskCard({task,onMove,colIdx,onDetail}){
+function TaskCard({task,canMove,colIdx,onDetail,onMove}){
   const isUrgent=task.prio==="Urgente";
   return(
     <div onClick={onDetail} style={{background:"#fff",border:"1px solid #e0e0dc",borderLeft:isUrgent?"3px solid #E24B4A":"1px solid #e0e0dc",borderRadius:9,padding:"10px 12px",cursor:"pointer"}}
@@ -302,8 +311,10 @@ function TaskCard({task,onMove,colIdx,onDetail}){
       </div>
       {task.notes&&<div style={{fontSize:12,color:"#666",marginBottom:4,lineHeight:1.4}}>{task.notes}</div>}
       {task.due&&<div style={{fontSize:11,color:"#999",marginBottom:2}}>Vence: {fmtDate(task.due)}</div>}
+      {task.startedAt&&<div style={{fontSize:11,color:"#EF9F27",marginBottom:2}}>Inicio: {fmtDT(task.startedAt)}</div>}
+      {task.completedAt&&<div style={{fontSize:11,color:"#639922",marginBottom:2}}>Completado: {fmtDT(task.completedAt)}</div>}
       <div style={{fontSize:11,color:"#bbb"}}>Por: {task.requestedBy}</div>
-      {onMove&&(
+      {canMove&&(
         <div style={{display:"flex",gap:4,marginTop:8}} onClick={e=>e.stopPropagation()}>
           {colIdx>0&&<button onClick={()=>onMove(task.id,-1)} style={{...btn("transparent","#555","1px solid #d0d0cc"),padding:"3px 8px",fontSize:11}}>← Atrás</button>}
           {colIdx<2&&<button onClick={()=>onMove(task.id,1)} style={{...btn(colIdx===1?"#639922":"#7F77DD","#fff"),padding:"3px 10px",fontSize:11}}>{colIdx===1?"Completar ✓":"En proceso →"}</button>}
@@ -359,8 +370,10 @@ function TaskModal({onSave,onClose,initial}){
   );
 }
 
-function DetailModal({task,onClose,onMove,isManager,onEdit,onDelete}){
+function DetailModal({task,onClose,onMove,isManager,canMove,onEdit,onDelete}){
   const colIdx=COLS.indexOf(task.col);
+  const duration=task.startedAt&&task.completedAt?Math.round((new Date(task.completedAt)-new Date(task.startedAt))/60000):null;
+  const durTxt=duration!=null?(duration<60?`${duration} min`:`${Math.floor(duration/60)}h ${duration%60}min`):null;
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:"1rem"}}>
       <div style={{background:"#fff",borderRadius:12,border:"1px solid #d0d0cc",boxShadow:"0 8px 32px rgba(0,0,0,.22)",width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto",display:"flex",flexDirection:"column"}}>
@@ -379,24 +392,32 @@ function DetailModal({task,onClose,onMove,isManager,onEdit,onDelete}){
             <span style={badge(PRIO_COLORS[task.prio].bg,PRIO_COLORS[task.prio].color,{fontSize:12})}>{task.prio}</span>
             <span style={badge(COL_COLORS[task.col].bg,COL_COLORS[task.col].color,{fontSize:12})}>{task.col}</span>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"110px 1fr",gap:"10px 8px",fontSize:13}}>
-            {[["Solicitado por",task.requestedBy],["Fecha límite",task.due?fmtDate(task.due):"—"],["Creado",fmtDT(task.createdAt)],["Descripción",task.notes||"—"]].map(([l,v])=>[
+          <div style={{display:"grid",gridTemplateColumns:"120px 1fr",gap:"10px 8px",fontSize:13}}>
+            {[
+              ["Solicitado por", task.requestedBy],
+              ["Fecha límite",   task.due?fmtDate(task.due):"—"],
+              ["Creado",         fmtDT(task.createdAt)],
+              ["Inicio ejecución", task.startedAt?fmtDT(task.startedAt):"Pendiente"],
+              ["Completado",     task.completedAt?fmtDT(task.completedAt):"—"],
+              ...(durTxt?[["Tiempo total", durTxt]]:[]),
+              ["Descripción",    task.notes||"—"],
+            ].map(([l,v])=>[
               <span key={l+"l"} style={{color:"#888",fontSize:12,fontWeight:500}}>{l}</span>,
-              <span key={l+"v"} style={{color:"#1a1a1a",lineHeight:1.5}}>{v}</span>
+              <span key={l+"v"} style={{color: l==="Inicio ejecución"?"#EF9F27": l==="Completado"&&task.completedAt?"#639922": l==="Tiempo total"?"#3C3489":"#1a1a1a",lineHeight:1.5,fontWeight:l==="Tiempo total"?600:400}}>{v}</span>
             ])}
           </div>
         </div>
         <div style={{padding:"1rem 1.25rem",borderTop:"1px solid #eee",background:"#f9f9f9",borderRadius:"0 0 12px 12px"}}>
-          {isManager?(
+          {canMove?(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               <div style={{display:"flex",gap:8}}>
                 {colIdx>0&&<button onClick={()=>{onMove(task.id,-1);onClose();}} style={{...btn("#fff","#333","1px solid #d0d0cc"),flex:1}}>← Mover atrás</button>}
                 {colIdx<2&&<button onClick={()=>{onMove(task.id,1);onClose();}} style={{...btn(colIdx===1?"#639922":"#7F77DD","#fff"),flex:1}}>{colIdx===1?"Completar ✓":"En proceso →"}</button>}
               </div>
-              <div style={{display:"flex",gap:8}}>
+              {isManager&&<div style={{display:"flex",gap:8}}>
                 <button onClick={()=>onEdit(task)} style={{...btn("#EEEDFE","#3C3489","1.5px solid #7F77DD"),flex:1}}>Editar tarea</button>
                 <button onClick={()=>onDelete(task.id)} style={{...btn("#FCEBEB","#A32D2D","1.5px solid #E24B4A"),flex:1}}>Eliminar tarea</button>
-              </div>
+              </div>}
             </div>
           ):(
             <button onClick={onClose} style={{...btn("#fff","#555","1px solid #d0d0cc"),width:"100%"}}>Cerrar</button>
