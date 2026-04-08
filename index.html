@@ -7,6 +7,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    databaseURL: "https://opsboard-eom-default-rtdb.firebaseio.com"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f3;color:#1a1a1a;font-size:14px}
@@ -82,44 +91,62 @@ function App(){
   useEffect(()=>{
     if(loaded.current)return;
     loaded.current=true;
-    try{
-      const t=localStorage.getItem("ops_tasks_v2");
-      const l=localStorage.getItem("ops_log_v2");
-      if(t)setTasks(JSON.parse(t));
-      if(l)setLog(JSON.parse(l));
-    }catch{}
+    db.ref("tasks").on("value",snap=>{
+      const val=snap.val();
+      if(val) setTasks(Object.values(val));
+    });
+    db.ref("log").on("value",snap=>{
+      const val=snap.val();
+      if(val) setLog(Object.values(val).sort((a,b)=>new Date(b.ts)-new Date(a.ts)));
+    });
   },[]);
 
-  useEffect(()=>{
-    if(!loaded.current)return;
-    try{
-      localStorage.setItem("ops_tasks_v2",JSON.stringify(tasks));
-      localStorage.setItem("ops_log_v2",JSON.stringify(log));
-    }catch{}
-  },[tasks,log]);
+  // sync tasks to firebase
+  const saveTasks=(updated)=>{
+    const obj={};
+    updated.forEach(t=>{ obj[t.id]=t; });
+    db.ref("tasks").set(obj);
+  };
+  const saveLog=(entry)=>{ db.ref("log/"+entry.id).set(entry); };
 
   const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),2800);};
-  const addLog=(action,taskLink,cat)=>setLog(prev=>[{id:uid(),ts:nowISO(),user:user?.name||"Sistema",action,taskLink,cat},...prev]);
+  const addLog=(action,taskLink,cat)=>{
+    const entry={id:uid(),ts:nowISO(),user:user?.name||"Sistema",action,taskLink,cat};
+    setLog(prev=>[entry,...prev]);
+    saveLog(entry);
+  };
 
   const moveTask=(id,dir)=>{
-    setTasks(prev=>prev.map(t=>{
-      if(t.id!==id)return t;
-      const next=COLS[COLS.indexOf(t.col)+dir];
-      if(!next)return t;
-      addLog(`movió a ${next}`,t.taskLink,t.cat);
-      return{...t,col:next};
-    }));
+    setTasks(prev=>{
+      const updated=prev.map(t=>{
+        if(t.id!==id)return t;
+        const next=COLS[COLS.indexOf(t.col)+dir];
+        if(!next)return t;
+        addLog(`movió a ${next}`,t.taskLink,t.cat);
+        return{...t,col:next};
+      });
+      saveTasks(updated);
+      return updated;
+    });
     showToast("Tarea actualizada");
   };
 
   const saveTask=(data)=>{
     if(editTask){
-      setTasks(prev=>prev.map(t=>t.id===editTask.id?{...t,...data}:t));
+      setTasks(prev=>{
+        const updated=prev.map(t=>t.id===editTask.id?{...t,...data}:t);
+        saveTasks(updated);
+        return updated;
+      });
       addLog("editó",data.taskLink,data.cat);
       showToast("Tarea actualizada");
     }else{
       const nt={id:uid(),createdAt:nowISO(),col:"Asignado",requestedBy:user.name,...data};
-      setTasks(prev=>[nt,...prev]);
+      setTasks(prev=>{
+        const updated=[nt,...prev];
+        saveTasks(updated);
+        return updated;
+      });
       addLog("creó",data.taskLink,data.cat);
       showToast("Tarea creada");
     }
@@ -128,7 +155,12 @@ function App(){
 
   const deleteTask=(id)=>{
     const t=tasks.find(x=>x.id===id);
-    setTasks(prev=>prev.filter(x=>x.id!==id));
+    setTasks(prev=>{
+      const updated=prev.filter(x=>x.id!==id);
+      saveTasks(updated);
+      db.ref("tasks/"+id).remove();
+      return updated;
+    });
     addLog("eliminó",t?.taskLink||"",t?.cat||"");
     setDetail(null);
     showToast("Tarea eliminada","warn");
